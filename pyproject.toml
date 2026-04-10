@@ -1,0 +1,18 @@
+[build-system]
+requires = ["scikit-build-core>=0.10", "pybind11>=2.12"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "conductor"
+version = "0.1.0"
+requires-python = ">=3.9"
+authors = [
+	{ name = "Fabrizio Pollastri", email = "mxgbot@gmail.com" },
+]
+license = { file = "LICENSE" }
+classifiers = [
+	"License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+]
+
+[tool.scikit-build]
+build-dir = "build/{wheel_tag}"

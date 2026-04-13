@@ -137,6 +137,51 @@ class SchedulerRegressionTests(unittest.TestCase):
             job["queue_wait_mean_us"],
         )
 
+    def test_skip_next_slots_external_and_cross_task(self):
+        scheduler = conductor.Scheduler()
+        runs_a = []
+        runs_b = []
+        task_ids = {}
+
+        def task_a():
+            runs_a.append(time.perf_counter())
+            if len(runs_a) == 1:
+                scheduler.skip_next_slots(task_ids["b"], 1)
+
+        def task_b():
+            runs_b.append(time.perf_counter())
+
+        task_ids["a"] = scheduler.add_task(task_a, period_us=10_000, count=3)
+        task_ids["b"] = scheduler.add_task(task_b, period_us=10_000, count=3)
+
+        scheduler.start_engine()
+        scheduler.skip_next_slots(task_ids["a"], 1)
+        wait_until_done(scheduler)
+
+        jobs = {job["id"]: job for job in scheduler.read_jobs()}
+        self.assertGreaterEqual(jobs[task_ids["a"]]["skipped_count"], 1)
+        self.assertGreaterEqual(jobs[task_ids["b"]]["skipped_count"], 1)
+        self.assertEqual(jobs[task_ids["a"]]["run_count"], 3)
+        self.assertEqual(jobs[task_ids["b"]]["run_count"], 3)
+
+    def test_skip_next_slots_from_task_context(self):
+        scheduler = conductor.Scheduler()
+        run_count = {"self": 0}
+
+        def self_task():
+            run_count["self"] += 1
+            if run_count["self"] == 1:
+                scheduler.skip_next_slots(slots=2)
+
+        task_id = scheduler.add_task(self_task, period_us=8_000, count=4)
+        scheduler.start_engine()
+        wait_until_done(scheduler)
+
+        jobs = {job["id"]: job for job in scheduler.read_jobs()}
+        self.assertEqual(jobs[task_id]["run_count"], 4)
+        self.assertGreaterEqual(jobs[task_id]["skipped_count"], 2)
+        self.assertEqual(jobs[task_id]["pending_skip_slots"], 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

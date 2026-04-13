@@ -302,6 +302,7 @@ public:
             d["overlap_policy"] = overlap_policy_name(job->overlap_policy);
             d["active"] = job->active;
             d["in_flight"] = py::int_(job->in_flight);
+            d["pending_skip_slots"] = py::int_(job->pending_skip_slots);
             d["run_count"] = job->run_count;
             d["skipped_count"] = job->skipped_count;
             d["late_count"] = job->late_count;
@@ -323,6 +324,21 @@ public:
         return out;
     }
 
+    std::uint64_t skip_next_slots(py::object task_id = py::none(), std::uint64_t slots = 1) {
+        if (slots == 0) {
+            throw std::runtime_error("slots must be >= 1");
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto job = resolve_job_for_skip_unlocked(task_id);
+        if (!job->active) {
+            throw std::runtime_error("cannot skip slots for inactive task: " + job->id);
+        }
+
+        job->pending_skip_slots += slots;
+        return job->pending_skip_slots;
+    }
+
 private:
     enum class OverlapPolicy { Serial, Overlap, Skip };
 
@@ -339,7 +355,7 @@ private:
         std::uint64_t submitted{0};
     };
 
-    struct Job {
+    struct Job : std::enable_shared_from_this<Job> {
         explicit Job(asio::io_context& io) : timer(io) {}
 
         std::string id;
@@ -357,6 +373,7 @@ private:
         bool active{true};
         std::uint64_t in_flight{0};
         std::uint64_t skipped_count{0};
+        std::uint64_t pending_skip_slots{0};
         double queue_wait_mean_us{0.0};
         double queue_wait_max_us{0.0};
         double queue_wait_m2{0.0};
@@ -705,8 +722,34 @@ private:
     }
 
     void invoke_job(Job& job) {
+        CurrentJobScope current_job_scope(job.shared_from_this());
         py::gil_scoped_acquire gil;
         job.py_task(*job.py_args);
+    }
+
+    std::shared_ptr<Job> resolve_job_for_skip_unlocked(const py::object& task_id_obj) const {
+        if (task_id_obj.is_none()) {
+            auto current = tls_current_job_.lock();
+            if (!current) {
+                throw std::runtime_error(
+                    "task_id is required when skip_next_slots is called outside a task"
+                );
+            }
+            return current;
+        }
+
+        if (!py::isinstance<py::str>(task_id_obj)) {
+            throw std::runtime_error("task_id must be None or a string");
+        }
+
+        std::string task_id = task_id_obj.cast<std::string>();
+        for (const auto& job : jobs_) {
+            if (job->id == task_id) {
+                return job;
+            }
+        }
+
+        throw std::runtime_error("unknown task id: " + task_id);
     }
 
     void finish_job(Job& job) {
@@ -834,7 +877,12 @@ private:
                 }
                 pool = require_pool_unlocked(job->pool_id);
 
-                if (job->overlap_policy == OverlapPolicy::Skip && job->in_flight > 0) {
+                if (job->pending_skip_slots > 0) {
+                    --job->pending_skip_slots;
+                    ++job->skipped_count;
+                    advance_next_deadline_unlocked(*job, fired_at);
+                    rearm = true;
+                } else if (job->overlap_policy == OverlapPolicy::Skip && job->in_flight > 0) {
                     ++job->skipped_count;
                     advance_next_deadline_unlocked(*job, fired_at);
                     rearm = true;
@@ -934,7 +982,24 @@ private:
     std::uint64_t total_in_flight_{0};
 
     std::uint64_t next_job_seq_{1};
+
+    struct CurrentJobScope {
+        explicit CurrentJobScope(const std::shared_ptr<Job>& job)
+            : previous_(tls_current_job_) {
+            tls_current_job_ = job;
+        }
+
+        ~CurrentJobScope() {
+            tls_current_job_ = previous_;
+        }
+
+        std::weak_ptr<Job> previous_;
+    };
+
+    static thread_local std::weak_ptr<Job> tls_current_job_;
 };
+
+thread_local std::weak_ptr<Scheduler::Job> Scheduler::tls_current_job_{};
 
 PYBIND11_MODULE(conductor, m) {
     py::class_<Scheduler>(m, "Scheduler")
@@ -962,5 +1027,11 @@ PYBIND11_MODULE(conductor, m) {
         .def("start_engine", &Scheduler::start_engine)
         .def("stop", &Scheduler::stop)
         .def("read_stats", &Scheduler::read_stats)
-        .def("read_jobs", &Scheduler::read_jobs);
+        .def("read_jobs", &Scheduler::read_jobs)
+        .def(
+            "skip_next_slots",
+            &Scheduler::skip_next_slots,
+            py::arg("task_id") = py::none(),
+            py::arg("slots") = 1
+        );
 }

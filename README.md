@@ -21,6 +21,7 @@ A lightweight periodic task scheduler exposed to Python through `pybind11`, buil
   - [`start_engine()`, `stop()`, `clear_tasks()`](#start_engine-stop-clear_tasks)
   - [`read_stats()`](#read_stats)
   - [`read_jobs()`](#read_jobs)
+  - [`skip_next_slots(...)`](#skip_next_slots)
 - [Task model and timing semantics](#task-model-and-timing-semantics)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
@@ -308,6 +309,32 @@ Returns a list of dicts, one per task/job:
 - `task_error` (`str`, empty when no error)
 - `period_us` (`int`)
 - `remaining` (`int` or `"forever"`)
+- `pending_skip_slots` (`int`)
+
+### `skip_next_slots(...)`
+
+```python
+pending = s.skip_next_slots(task_id=None, slots=1)
+```
+
+Order one or more of the next execution slots of a task to be skipped.
+
+Parameters:
+
+- `task_id` (`str|None`):
+  - `"job_1"` (or custom id) to skip slots of a specific task
+  - `None` to target the current running task (only valid when called from inside a task callback)
+- `slots` (`int`): number of next slots to skip, must be `>= 1`
+
+Returns:
+
+- `pending_skip_slots` (`int`) after applying the request
+
+Notes:
+
+- works while scheduler is running or before start
+- can be called externally, by one task for another task, or by the task itself
+- skipped slots increment `skipped_count` and keep periodic cadence (the task is not dispatched for those slots)
 
 ## Task model and timing semantics
 

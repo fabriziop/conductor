@@ -358,6 +358,16 @@ Notes:
   - if a tick occurs while a previous invocation of the same task is still running, that tick is skipped
   - skipped ticks are counted in `skipped_count`
 
+### Phase stability of aligned starts
+
+When `start` is set to a boundary alias (`"next_second"`, `"next_minute"`, `"next_hour"`) combined with an `offset_us`, the first deadline is anchored to an exact UTC boundary plus the offset. Every subsequent deadline is computed by **adding** `period_us` to the previous deadline — never recomputed from wall clock — so the phase relative to each boundary remains constant indefinitely.
+
+Example: `start="next_second"`, `offset_us=100_000`, `period_us=1_000_000` fires at T+0.100 s, T+1.100 s, T+2.100 s, … with no drift.
+
+The same guarantee holds for `"next_minute"`, `"next_hour"`, and explicit wall-clock strings.
+
+> **Caveat:** If the scheduler falls more than ~10 periods behind (e.g. after a system suspend), it reanchors to `now + period` to avoid an unbounded backlog. This reanchor shifts the phase. Under normal continuous operation it does not occur.
+
 ### Start values
 
 `start` accepts:

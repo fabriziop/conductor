@@ -21,12 +21,12 @@ source .venv/bin/activate
 
 # Build and install
 echo "Installing build dependencies..."
-python -m pip install build scikit-build-core pybind11
+python3 -m pip install build scikit-build-core pybind11
 
 echo "Building wheel..."
-python -m build
+python3 -m build
 
 echo "Installing wheel..."
-python -m pip install dist/*.whl
+python3 -m pip install dist/*.whl
 
 echo "Done!"

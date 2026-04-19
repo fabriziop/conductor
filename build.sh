@@ -11,22 +11,32 @@ if ! command -v python3 &> /dev/null; then
 fi
 
 # Auto-create and activate venv if needed
-if [ ! -d .venv ]; then
+VENV_DIR=".venv"
+VENV_PYTHON="$VENV_DIR/bin/python3"
+
+if [ ! -d "$VENV_DIR" ]; then
     echo "Creating venv..."
-    python3 -m venv .venv
+    python3 -m venv "$VENV_DIR"
 fi
 
-# Activate venv
-source .venv/bin/activate
+if [ ! -x "$VENV_PYTHON" ]; then
+    echo "Error: virtualenv python not found at $VENV_PYTHON" >&2
+    exit 1
+fi
 
 # Build and install
+DIST_DIR="dist"
+
 echo "Installing build dependencies..."
-python3 -m pip install build scikit-build-core pybind11
+"$VENV_PYTHON" -m pip install --upgrade pip
+"$VENV_PYTHON" -m pip install build scikit-build-core pybind11
 
 echo "Building wheel..."
-python3 -m build
+"$VENV_PYTHON" -m build --outdir "$DIST_DIR"
 
 echo "Installing wheel..."
-python3 -m pip install dist/*.whl
+"$VENV_PYTHON" -m pip install "$DIST_DIR"/*.whl
 
 echo "Done!"
+echo "Python artifacts: ./${DIST_DIR}/"
+echo "C++ intermediates: ./build/"

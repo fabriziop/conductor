@@ -302,7 +302,8 @@ public:
             d["overlap_policy"] = overlap_policy_name(job->overlap_policy);
             d["active"] = job->active;
             d["in_flight"] = py::int_(job->in_flight);
-            d["pending_skip_slots"] = py::int_(job->pending_skip_slots);
+            d["suspended"] = py::bool_(job->suspended);
+            d["resume_after_slots"] = suspension_state_to_object(*job);
             d["run_count"] = job->run_count;
             d["skipped_count"] = job->skipped_count;
             d["late_count"] = job->late_count;
@@ -324,19 +325,48 @@ public:
         return out;
     }
 
-    std::uint64_t skip_next_slots(py::object task_id = py::none(), std::uint64_t slots = 1) {
-        if (slots == 0) {
-            throw std::runtime_error("slots must be >= 1");
-        }
-
+    py::object suspend(py::object task_id = py::none(), std::uint64_t for_slots = 0) {
         std::lock_guard<std::mutex> lock(mutex_);
-        auto job = resolve_job_for_skip_unlocked(task_id);
+        auto job = resolve_job_for_control_unlocked(task_id, "suspend");
         if (!job->active) {
-            throw std::runtime_error("cannot skip slots for inactive task: " + job->id);
+            throw std::runtime_error("cannot suspend inactive task: " + job->id);
         }
 
-        job->pending_skip_slots += slots;
-        return job->pending_skip_slots;
+        job->suspended = true;
+        if (for_slots == 0) {
+            job->suspend_countdown_slots.reset();
+        } else {
+            job->suspend_countdown_slots = for_slots;
+        }
+
+        return suspension_state_to_object(*job);
+    }
+
+    py::object resume(py::object task_id = py::none(), std::uint64_t after_slots = 0) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto job = resolve_job_for_control_unlocked(task_id, "resume");
+        if (!job->active) {
+            throw std::runtime_error("cannot resume inactive task: " + job->id);
+        }
+
+        if (!job->suspended) {
+            if (after_slots == 0) {
+                return py::int_(0);
+            }
+            throw std::runtime_error(
+                "cannot delay resume for task that is not suspended: " + job->id
+            );
+        }
+
+        if (after_slots == 0) {
+            job->suspended = false;
+            job->suspend_countdown_slots.reset();
+        } else {
+            job->suspended = true;
+            job->suspend_countdown_slots = after_slots;
+        }
+
+        return suspension_state_to_object(*job);
     }
 
 private:
@@ -373,7 +403,8 @@ private:
         bool active{true};
         std::uint64_t in_flight{0};
         std::uint64_t skipped_count{0};
-        std::uint64_t pending_skip_slots{0};
+        bool suspended{false};
+        std::optional<std::uint64_t> suspend_countdown_slots;
         double queue_wait_mean_us{0.0};
         double queue_wait_max_us{0.0};
         double queue_wait_m2{0.0};
@@ -727,12 +758,26 @@ private:
         job.py_task(*job.py_args);
     }
 
-    std::shared_ptr<Job> resolve_job_for_skip_unlocked(const py::object& task_id_obj) const {
+    static py::object suspension_state_to_object(const Job& job) {
+        if (!job.suspended) {
+            return py::int_(0);
+        }
+        if (!job.suspend_countdown_slots.has_value()) {
+            return py::str("forever");
+        }
+        return py::int_(*job.suspend_countdown_slots);
+    }
+
+    std::shared_ptr<Job> resolve_job_for_control_unlocked(
+        const py::object& task_id_obj,
+        const char* action_name
+    ) const {
         if (task_id_obj.is_none()) {
             auto current = tls_current_job_.lock();
             if (!current) {
                 throw std::runtime_error(
-                    "task_id is required when skip_next_slots is called outside a task"
+                    std::string("task_id is required when ") + action_name
+                    + " is called outside a task"
                 );
             }
             return current;
@@ -877,9 +922,17 @@ private:
                 }
                 pool = require_pool_unlocked(job->pool_id);
 
-                if (job->pending_skip_slots > 0) {
-                    --job->pending_skip_slots;
+                if (job->suspended) {
                     ++job->skipped_count;
+                    if (job->suspend_countdown_slots.has_value()) {
+                        if (*job->suspend_countdown_slots > 0) {
+                            --(*job->suspend_countdown_slots);
+                        }
+                        if (*job->suspend_countdown_slots == 0) {
+                            job->suspended = false;
+                            job->suspend_countdown_slots.reset();
+                        }
+                    }
                     advance_next_deadline_unlocked(*job, fired_at);
                     rearm = true;
                 } else if (job->overlap_policy == OverlapPolicy::Skip && job->in_flight > 0) {
@@ -1029,9 +1082,15 @@ PYBIND11_MODULE(conductor, m) {
         .def("read_stats", &Scheduler::read_stats)
         .def("read_jobs", &Scheduler::read_jobs)
         .def(
-            "skip_next_slots",
-            &Scheduler::skip_next_slots,
+            "suspend",
+            &Scheduler::suspend,
             py::arg("task_id") = py::none(),
-            py::arg("slots") = 1
+            py::arg("for_") = 0
+        )
+        .def(
+            "resume",
+            &Scheduler::resume,
+            py::arg("task_id") = py::none(),
+            py::arg("after") = 0
         );
 }

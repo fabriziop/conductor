@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/fabrizio/inrim/gscv/cppscheduler
+CMAKE_SOURCE_DIR = /home/fabrizio/inrim/gscv/conductor
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/fabrizio/inrim/gscv/cppscheduler
+CMAKE_BINARY_DIR = /home/fabrizio/inrim/gscv/conductor
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -85,11 +85,56 @@ rebuild_cache:
 rebuild_cache/fast: rebuild_cache
 .PHONY : rebuild_cache/fast
 
+# Special rule for the target list_install_components
+list_install_components:
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Available install components are: \"Unspecified\""
+.PHONY : list_install_components
+
+# Special rule for the target list_install_components
+list_install_components/fast: list_install_components
+.PHONY : list_install_components/fast
+
+# Special rule for the target install
+install: preinstall
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
+	/usr/bin/cmake -P cmake_install.cmake
+.PHONY : install
+
+# Special rule for the target install
+install/fast: preinstall/fast
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Install the project..."
+	/usr/bin/cmake -P cmake_install.cmake
+.PHONY : install/fast
+
+# Special rule for the target install/local
+install/local: preinstall
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
+	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
+.PHONY : install/local
+
+# Special rule for the target install/local
+install/local/fast: preinstall/fast
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing only the local directory..."
+	/usr/bin/cmake -DCMAKE_INSTALL_LOCAL_ONLY=1 -P cmake_install.cmake
+.PHONY : install/local/fast
+
+# Special rule for the target install/strip
+install/strip: preinstall
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
+	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
+.PHONY : install/strip
+
+# Special rule for the target install/strip
+install/strip/fast: preinstall/fast
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Installing the project stripped..."
+	/usr/bin/cmake -DCMAKE_INSTALL_DO_STRIP=1 -P cmake_install.cmake
+.PHONY : install/strip/fast
+
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/fabrizio/inrim/gscv/cppscheduler/CMakeFiles /home/fabrizio/inrim/gscv/cppscheduler//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/fabrizio/inrim/gscv/conductor/CMakeFiles /home/fabrizio/inrim/gscv/conductor//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/fabrizio/inrim/gscv/cppscheduler/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/fabrizio/inrim/gscv/conductor/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -117,30 +162,17 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named cppscheduler
+# Target rules for targets named conductor
 
 # Build rule for target.
-cppscheduler: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 cppscheduler
-.PHONY : cppscheduler
+conductor: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 conductor
+.PHONY : conductor
 
 # fast build rule for target.
-cppscheduler/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/build
-.PHONY : cppscheduler/fast
-
-#=============================================================================
-# Target rules for targets named example_single_cpp_task
-
-# Build rule for target.
-example_single_cpp_task: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 example_single_cpp_task
-.PHONY : example_single_cpp_task
-
-# fast build rule for target.
-example_single_cpp_task/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/example_single_cpp_task.dir/build.make CMakeFiles/example_single_cpp_task.dir/build
-.PHONY : example_single_cpp_task/fast
+conductor/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/conductor.dir/build.make CMakeFiles/conductor.dir/build
+.PHONY : conductor/fast
 
 #=============================================================================
 # Target rules for targets named example_single_python_task
@@ -208,19 +240,6 @@ examples/fast:
 .PHONY : examples/fast
 
 #=============================================================================
-# Target rules for targets named run_example_single_cpp_task
-
-# Build rule for target.
-run_example_single_cpp_task: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 run_example_single_cpp_task
-.PHONY : run_example_single_cpp_task
-
-# fast build rule for target.
-run_example_single_cpp_task/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_example_single_cpp_task.dir/build.make CMakeFiles/run_example_single_cpp_task.dir/build
-.PHONY : run_example_single_cpp_task/fast
-
-#=============================================================================
 # Target rules for targets named run_example_single_python_task
 
 # Build rule for target.
@@ -285,125 +304,29 @@ run_regression_tests/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/run_regression_tests.dir/build.make CMakeFiles/run_regression_tests.dir/build
 .PHONY : run_regression_tests/fast
 
-custom_tasks/user_cpp_task_math.o: custom_tasks/user_cpp_task_math.cpp.o
-.PHONY : custom_tasks/user_cpp_task_math.o
+src/conductor.o: src/conductor.cpp.o
+.PHONY : src/conductor.o
 
 # target to build an object file
-custom_tasks/user_cpp_task_math.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_math.cpp.o
-.PHONY : custom_tasks/user_cpp_task_math.cpp.o
+src/conductor.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/conductor.dir/build.make CMakeFiles/conductor.dir/src/conductor.cpp.o
+.PHONY : src/conductor.cpp.o
 
-custom_tasks/user_cpp_task_math.i: custom_tasks/user_cpp_task_math.cpp.i
-.PHONY : custom_tasks/user_cpp_task_math.i
-
-# target to preprocess a source file
-custom_tasks/user_cpp_task_math.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_math.cpp.i
-.PHONY : custom_tasks/user_cpp_task_math.cpp.i
-
-custom_tasks/user_cpp_task_math.s: custom_tasks/user_cpp_task_math.cpp.s
-.PHONY : custom_tasks/user_cpp_task_math.s
-
-# target to generate assembly for a file
-custom_tasks/user_cpp_task_math.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_math.cpp.s
-.PHONY : custom_tasks/user_cpp_task_math.cpp.s
-
-custom_tasks/user_cpp_task_print.o: custom_tasks/user_cpp_task_print.cpp.o
-.PHONY : custom_tasks/user_cpp_task_print.o
-
-# target to build an object file
-custom_tasks/user_cpp_task_print.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_print.cpp.o
-.PHONY : custom_tasks/user_cpp_task_print.cpp.o
-
-custom_tasks/user_cpp_task_print.i: custom_tasks/user_cpp_task_print.cpp.i
-.PHONY : custom_tasks/user_cpp_task_print.i
+src/conductor.i: src/conductor.cpp.i
+.PHONY : src/conductor.i
 
 # target to preprocess a source file
-custom_tasks/user_cpp_task_print.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_print.cpp.i
-.PHONY : custom_tasks/user_cpp_task_print.cpp.i
+src/conductor.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/conductor.dir/build.make CMakeFiles/conductor.dir/src/conductor.cpp.i
+.PHONY : src/conductor.cpp.i
 
-custom_tasks/user_cpp_task_print.s: custom_tasks/user_cpp_task_print.cpp.s
-.PHONY : custom_tasks/user_cpp_task_print.s
-
-# target to generate assembly for a file
-custom_tasks/user_cpp_task_print.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_print.cpp.s
-.PHONY : custom_tasks/user_cpp_task_print.cpp.s
-
-custom_tasks/user_cpp_task_state.o: custom_tasks/user_cpp_task_state.cpp.o
-.PHONY : custom_tasks/user_cpp_task_state.o
-
-# target to build an object file
-custom_tasks/user_cpp_task_state.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_state.cpp.o
-.PHONY : custom_tasks/user_cpp_task_state.cpp.o
-
-custom_tasks/user_cpp_task_state.i: custom_tasks/user_cpp_task_state.cpp.i
-.PHONY : custom_tasks/user_cpp_task_state.i
-
-# target to preprocess a source file
-custom_tasks/user_cpp_task_state.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_state.cpp.i
-.PHONY : custom_tasks/user_cpp_task_state.cpp.i
-
-custom_tasks/user_cpp_task_state.s: custom_tasks/user_cpp_task_state.cpp.s
-.PHONY : custom_tasks/user_cpp_task_state.s
+src/conductor.s: src/conductor.cpp.s
+.PHONY : src/conductor.s
 
 # target to generate assembly for a file
-custom_tasks/user_cpp_task_state.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_task_state.cpp.s
-.PHONY : custom_tasks/user_cpp_task_state.cpp.s
-
-custom_tasks/user_cpp_tasks.o: custom_tasks/user_cpp_tasks.cpp.o
-.PHONY : custom_tasks/user_cpp_tasks.o
-
-# target to build an object file
-custom_tasks/user_cpp_tasks.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_tasks.cpp.o
-.PHONY : custom_tasks/user_cpp_tasks.cpp.o
-
-custom_tasks/user_cpp_tasks.i: custom_tasks/user_cpp_tasks.cpp.i
-.PHONY : custom_tasks/user_cpp_tasks.i
-
-# target to preprocess a source file
-custom_tasks/user_cpp_tasks.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_tasks.cpp.i
-.PHONY : custom_tasks/user_cpp_tasks.cpp.i
-
-custom_tasks/user_cpp_tasks.s: custom_tasks/user_cpp_tasks.cpp.s
-.PHONY : custom_tasks/user_cpp_tasks.s
-
-# target to generate assembly for a file
-custom_tasks/user_cpp_tasks.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/custom_tasks/user_cpp_tasks.cpp.s
-.PHONY : custom_tasks/user_cpp_tasks.cpp.s
-
-src/cppscheduler.o: src/cppscheduler.cpp.o
-.PHONY : src/cppscheduler.o
-
-# target to build an object file
-src/cppscheduler.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/src/cppscheduler.cpp.o
-.PHONY : src/cppscheduler.cpp.o
-
-src/cppscheduler.i: src/cppscheduler.cpp.i
-.PHONY : src/cppscheduler.i
-
-# target to preprocess a source file
-src/cppscheduler.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/src/cppscheduler.cpp.i
-.PHONY : src/cppscheduler.cpp.i
-
-src/cppscheduler.s: src/cppscheduler.cpp.s
-.PHONY : src/cppscheduler.s
-
-# target to generate assembly for a file
-src/cppscheduler.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/cppscheduler.dir/build.make CMakeFiles/cppscheduler.dir/src/cppscheduler.cpp.s
-.PHONY : src/cppscheduler.cpp.s
+src/conductor.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/conductor.dir/build.make CMakeFiles/conductor.dir/src/conductor.cpp.s
+.PHONY : src/conductor.cpp.s
 
 # Help Target
 help:
@@ -412,35 +335,25 @@ help:
 	@echo "... clean"
 	@echo "... depend"
 	@echo "... edit_cache"
+	@echo "... install"
+	@echo "... install/local"
+	@echo "... install/strip"
+	@echo "... list_install_components"
 	@echo "... rebuild_cache"
 	@echo "... example_multi_pool_concurrent"
 	@echo "... example_multiple_task"
 	@echo "... example_one_shot_abs_time"
-	@echo "... example_single_cpp_task"
 	@echo "... example_single_python_task"
 	@echo "... examples"
 	@echo "... run_example_multi_pool_concurrent"
 	@echo "... run_example_multiple_task"
-	@echo "... run_example_single_cpp_task"
 	@echo "... run_example_single_python_task"
 	@echo "... run_examples"
 	@echo "... run_regression_tests"
-	@echo "... cppscheduler"
-	@echo "... custom_tasks/user_cpp_task_math.o"
-	@echo "... custom_tasks/user_cpp_task_math.i"
-	@echo "... custom_tasks/user_cpp_task_math.s"
-	@echo "... custom_tasks/user_cpp_task_print.o"
-	@echo "... custom_tasks/user_cpp_task_print.i"
-	@echo "... custom_tasks/user_cpp_task_print.s"
-	@echo "... custom_tasks/user_cpp_task_state.o"
-	@echo "... custom_tasks/user_cpp_task_state.i"
-	@echo "... custom_tasks/user_cpp_task_state.s"
-	@echo "... custom_tasks/user_cpp_tasks.o"
-	@echo "... custom_tasks/user_cpp_tasks.i"
-	@echo "... custom_tasks/user_cpp_tasks.s"
-	@echo "... src/cppscheduler.o"
-	@echo "... src/cppscheduler.i"
-	@echo "... src/cppscheduler.s"
+	@echo "... conductor"
+	@echo "... src/conductor.o"
+	@echo "... src/conductor.i"
+	@echo "... src/conductor.s"
 .PHONY : help
 
 

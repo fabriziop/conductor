@@ -21,7 +21,8 @@ A lightweight periodic task scheduler exposed to Python through `pybind11`, buil
   - [`start_engine()`, `stop()`, `clear_tasks()`](#start_engine-stop-clear_tasks)
   - [`read_stats()`](#read_stats)
   - [`read_jobs()`](#read_jobs)
-  - [`skip_next_slots(...)`](#skip_next_slots)
+  - [`suspend(...)`](#suspend)
+  - [`resume(...)`](#resume)
 - [Task model and timing semantics](#task-model-and-timing-semantics)
 - [Examples](#examples)
 - [Troubleshooting](#troubleshooting)
@@ -309,32 +310,66 @@ Returns a list of dicts, one per task/job:
 - `task_error` (`str`, empty when no error)
 - `period_us` (`int`)
 - `remaining` (`int` or `"forever"`)
-- `pending_skip_slots` (`int`)
+- `suspended` (`bool`)
+- `resume_after_slots` (`int` or `"forever"`)
 
-### `skip_next_slots(...)`
+### `suspend(...)`
 
 ```python
-pending = s.skip_next_slots(task_id=None, slots=1)
+pending = s.suspend(task_id=None, for_=0)
 ```
 
-Order one or more of the next execution slots of a task to be skipped.
+Suspend a task so its scheduled execution slots are skipped until it resumes.
+
+`for_` is used in Python because `for` is a reserved keyword.
 
 Parameters:
 
 - `task_id` (`str|None`):
-  - `"job_1"` (or custom id) to skip slots of a specific task
+  - `"job_1"` (or custom id) to suspend a specific task
   - `None` to target the current running task (only valid when called from inside a task callback)
-- `slots` (`int`): number of next slots to skip, must be `>= 1`
+- `for_` (`int`):
+  - `0` to suspend until task execution is explicitly resumed
+  - `N` to suspend the next `N` scheduled times, then resume automatically
 
 Returns:
 
-- `pending_skip_slots` (`int`) after applying the request
+- `resume_after_slots` (`int` or `"forever"`) after applying the request
 
 Notes:
 
 - works while scheduler is running or before start
 - can be called externally, by one task for another task, or by the task itself
-- skipped slots increment `skipped_count` and keep periodic cadence (the task is not dispatched for those slots)
+- control is scheduler-wide, not pool-local: a task running in one exec pool can suspend a task in another pool by `task_id`
+- suspended slots increment `skipped_count` and keep periodic cadence (the task is not dispatched for those slots)
+
+### `resume(...)`
+
+```python
+pending = s.resume(task_id=None, after=0)
+```
+
+Resume a suspended task immediately or after a further number of scheduled times.
+
+Parameters:
+
+- `task_id` (`str|None`):
+  - `"job_1"` (or custom id) to resume a specific task
+  - `None` to target the current running task (only valid when called from inside a task callback)
+- `after` (`int`):
+/home/fabrizio/inrim/gscv/conductor/src/conductor.cpp  - `0` to resume at the next scheduled time
+  - `N` to resume after `N` additional scheduled times have been skipped
+
+Returns:
+
+- `resume_after_slots` (`int` or `"forever"`) after applying the request
+
+Notes:
+
+- works while scheduler is running or before start
+- can be called externally, by one task for another task, or by the task itself
+- control is scheduler-wide, not pool-local: a task running in one exec pool can resume a task in another pool by `task_id`
+- when `after > 0`, the task stays suspended for that many more scheduled times before execution resumes
 
 ## Task model and timing semantics
 

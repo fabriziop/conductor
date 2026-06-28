@@ -3,7 +3,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-VERSION=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+# Get version from git tag, removing the 'v' prefix
+VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//')
+if [ -z "$VERSION" ]; then
+    echo "Error: No git tag found. Please create a tag (e.g., git tag -a v1.0.0 -m 'Version 1.0.0')."
+    exit 1
+fi
 ARCH=$(dpkg --print-architecture)
 PKG=python3-conductor
 REL=1

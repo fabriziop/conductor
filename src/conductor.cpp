@@ -43,12 +43,21 @@ using steady_clock_t = std::chrono::steady_clock;
 
 class Scheduler {
 public:
-    explicit Scheduler(std::uint64_t default_pool_workers = 1)
-                : io_(1) {
+    explicit Scheduler(
+        std::uint64_t default_pool_workers = 1,
+        py::object time_scale_obj = py::str("utc")
+    )
+        : time_scale_(parse_time_scale(time_scale_obj)),
+          io_(1) {
         if (default_pool_workers == 0) {
             throw std::runtime_error("default_pool_workers must be >= 1");
         }
+        warn_if_local_time_scale();
         create_pool_unlocked(default_pool_id(), static_cast<std::size_t>(default_pool_workers));
+    }
+
+    std::string time_scale() const {
+        return time_scale_name(time_scale_);
     }
 
     ~Scheduler() {
@@ -90,7 +99,7 @@ public:
         auto job = std::make_shared<Job>(io_);
         job->period = std::chrono::microseconds(period_us);
         job->remaining = parse_count(count);
-        job->next_deadline = resolve_start_deadline(start, offset_us);
+        job->next_deadline = resolve_start_deadline(start, offset_us, time_scale_);
         job->pool_id = parse_pool_id(pool_id);
         job->overlap_policy = parse_overlap_policy(overlap_policy);
         bind_task(*job, task, args);
@@ -370,6 +379,7 @@ public:
     }
 
 private:
+    enum class TimeScale { Utc, Local };
     enum class OverlapPolicy { Serial, Overlap, Skip };
 
     struct PoolState {
@@ -418,6 +428,47 @@ private:
         bool finished_naturally{false};
         std::string task_error;
     };
+
+    static const char* time_scale_name(TimeScale time_scale) {
+        switch (time_scale) {
+        case TimeScale::Utc:
+            return "utc";
+        case TimeScale::Local:
+            return "local";
+        }
+        return "utc";
+    }
+
+    static TimeScale parse_time_scale(const py::object& time_scale_obj) {
+        if (time_scale_obj.is_none()) {
+            return TimeScale::Utc;
+        }
+        if (!py::isinstance<py::str>(time_scale_obj)) {
+            throw std::runtime_error("time_scale must be None, 'utc', or 'local'");
+        }
+
+        std::string time_scale = normalize_name(trim(time_scale_obj.cast<std::string>()));
+        if (time_scale == "utc") {
+            return TimeScale::Utc;
+        }
+        if (time_scale == "local") {
+            return TimeScale::Local;
+        }
+        throw std::runtime_error("time_scale must be one of: utc, local");
+    }
+
+    void warn_if_local_time_scale() const {
+        if (time_scale_ != TimeScale::Local) {
+            return;
+        }
+        py::gil_scoped_acquire gil;
+        py::module_::import("warnings").attr("warn")(
+            "conductor Scheduler time_scale='local' uses the host local time zone; "
+            "explicit wall-clock starts around daylight-saving/summer-time changes "
+            "may be ambiguous or non-existent. Prefer time_scale='utc' for reproducible scheduling.",
+            py::module_::import("builtins").attr("RuntimeWarning")
+        );
+    }
 
     static std::string normalize_name(std::string s) {
         for (char& c : s) {
@@ -542,8 +593,45 @@ private:
         return std::chrono::system_clock::time_point(hrs);
     }
 
-    static std::chrono::system_clock::time_point parse_explicit_wallclock(
+    static std::int64_t days_from_civil(int y, unsigned m, unsigned d) {
+        y -= m <= 2;
+        const int era = (y >= 0 ? y : y - 399) / 400;
+        const unsigned yoe = static_cast<unsigned>(y - era * 400);
+        const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+        const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        return static_cast<std::int64_t>(era) * 146097 + static_cast<std::int64_t>(doe) - 719468;
+    }
+
+    static std::chrono::system_clock::time_point utc_time_point_from_tm(
+        const std::tm& tm
+    ) {
+        const auto days = days_from_civil(
+            tm.tm_year + 1900,
+            static_cast<unsigned>(tm.tm_mon + 1),
+            static_cast<unsigned>(tm.tm_mday)
+        );
+        auto seconds = std::chrono::seconds(days * 86400)
+                     + std::chrono::hours(tm.tm_hour)
+                     + std::chrono::minutes(tm.tm_min)
+                     + std::chrono::seconds(tm.tm_sec);
+        return std::chrono::system_clock::time_point(seconds);
+    }
+
+    static std::chrono::system_clock::time_point local_time_point_from_tm(
+        std::tm tm,
         const std::string& raw
+    ) {
+        tm.tm_isdst = -1;
+        std::time_t tt = std::mktime(&tm);
+        if (tt == static_cast<std::time_t>(-1)) {
+            throw std::runtime_error("failed to convert explicit local time: " + raw);
+        }
+        return std::chrono::system_clock::from_time_t(tt);
+    }
+
+    static std::chrono::system_clock::time_point parse_explicit_wallclock(
+        const std::string& raw,
+        TimeScale time_scale
     ) {
         static const std::regex re(
             R"(^\s*(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?\s*$)"
@@ -561,14 +649,10 @@ private:
         tm.tm_hour = std::stoi(m[4].str());
         tm.tm_min  = std::stoi(m[5].str());
         tm.tm_sec  = std::stoi(m[6].str());
-        tm.tm_isdst = -1;
 
-        std::time_t tt = std::mktime(&tm);
-        if (tt == static_cast<std::time_t>(-1)) {
-            throw std::runtime_error("failed to convert explicit local time: " + raw);
-        }
-
-        auto tp = std::chrono::system_clock::from_time_t(tt);
+        auto tp = (time_scale == TimeScale::Utc)
+            ? utc_time_point_from_tm(tm)
+            : local_time_point_from_tm(tm, raw);
 
         if (m[7].matched) {
             std::string frac = m[7].str();
@@ -580,9 +664,54 @@ private:
         return tp;
     }
 
+    static std::tm tm_from_time_t(std::time_t tt, TimeScale time_scale) {
+        std::tm out{};
+#if defined(_WIN32)
+        if (time_scale == TimeScale::Utc) {
+            gmtime_s(&out, &tt);
+        } else {
+            localtime_s(&out, &tt);
+        }
+#else
+        if (time_scale == TimeScale::Utc) {
+            gmtime_r(&tt, &out);
+        } else {
+            localtime_r(&tt, &out);
+        }
+#endif
+        return out;
+    }
+
+    static std::chrono::system_clock::time_point floor_to_scaled_unit(
+        std::chrono::system_clock::time_point tp,
+        TimeScale time_scale,
+        const char* unit
+    ) {
+        if (time_scale == TimeScale::Utc) {
+            if (std::string(unit) == "second") {
+                return floor_to_second(tp);
+            }
+            if (std::string(unit) == "minute") {
+                return floor_to_minute(tp);
+            }
+            return floor_to_hour(tp);
+        }
+
+        auto tt = std::chrono::system_clock::to_time_t(tp);
+        std::tm tm = tm_from_time_t(tt, TimeScale::Local);
+        if (std::string(unit) == "hour") {
+            tm.tm_min = 0;
+        }
+        if (std::string(unit) == "hour" || std::string(unit) == "minute") {
+            tm.tm_sec = 0;
+        }
+        return local_time_point_from_tm(tm, "local boundary");
+    }
+
     static steady_clock_t::time_point resolve_start_deadline(
         const py::object& start_obj,
-        std::int64_t offset_us
+        std::int64_t offset_us,
+        TimeScale time_scale
     ) {
         std::chrono::system_clock::time_point system_tp;
 
@@ -596,13 +725,13 @@ private:
             if (s == "asap" || s == "now") {
                 system_tp = now;
             } else if (s == "next_second") {
-                system_tp = floor_to_second(now) + std::chrono::seconds(1);
+                system_tp = floor_to_scaled_unit(now, time_scale, "second") + std::chrono::seconds(1);
             } else if (s == "next_minute") {
-                system_tp = floor_to_minute(now) + std::chrono::minutes(1);
+                system_tp = floor_to_scaled_unit(now, time_scale, "minute") + std::chrono::minutes(1);
             } else if (s == "next_hour") {
-                system_tp = floor_to_hour(now) + std::chrono::hours(1);
+                system_tp = floor_to_scaled_unit(now, time_scale, "hour") + std::chrono::hours(1);
             } else {
-                system_tp = parse_explicit_wallclock(raw);
+                system_tp = parse_explicit_wallclock(raw, time_scale);
             }
         } else if (py::isinstance<py::float_>(start_obj) || py::isinstance<py::int_>(start_obj)) {
             long double value = start_obj.cast<long double>();
@@ -1017,6 +1146,8 @@ private:
         });
     }
 
+    TimeScale time_scale_{TimeScale::Utc};
+
     mutable std::mutex mutex_;
     std::vector<std::shared_ptr<Job>> jobs_;
     std::unordered_map<std::string, std::shared_ptr<PoolState>> pools_;
@@ -1056,7 +1187,12 @@ thread_local std::weak_ptr<Scheduler::Job> Scheduler::tls_current_job_{};
 
 PYBIND11_MODULE(conductor, m) {
     py::class_<Scheduler>(m, "Scheduler")
-        .def(py::init<std::uint64_t>(), py::arg("default_pool_workers") = 1)
+        .def(
+            py::init<std::uint64_t, py::object>(),
+            py::arg("default_pool_workers") = 1,
+            py::arg("time_scale") = "utc"
+        )
+        .def("time_scale", &Scheduler::time_scale)
 
         .def(
             "add_task",

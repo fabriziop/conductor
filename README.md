@@ -48,10 +48,11 @@ Typical flow:
 ## Features
 
 - Schedule by period in microseconds (`period_us`)
+- Timescale from UTC (default) or local time
 - Start at:
   - immediate (`"asap"`, `"now"`)
   - aligned boundaries (`"next_second"`, `"next_minute"`, `"next_hour"`)
-  - explicit local wall clock (`"YYYY-MM-DD HH:MM:SS[.frac]"`)
+  - explicit wall clock (`"YYYY-MM-DD HH:MM:SS[.frac]"`) interpreted in the scheduler time scale
   - numeric epoch timestamps
 - Optional start offset in microseconds (`offset_us`)
 - Optional finite run count (`count`) or run forever
@@ -188,11 +189,16 @@ print(s.read_jobs())
 Construct a new scheduler:
 
 ```python
-s = conductor.Scheduler(default_pool_workers=1)
+s = conductor.Scheduler(default_pool_workers=1, time_scale="utc")
 ```
 
 `default_pool_workers` configures how many worker threads are created for the built-in
 `"default"` pool at runtime. It must be `>= 1`.
+
+`time_scale` configures how string wall-clock start values and boundary aliases are interpreted:
+
+- `"utc"` (default): explicit date-time strings and `"next_second"`, `"next_minute"`, `"next_hour"` are interpreted on the UTC time scale. This is the recommended mode for reproducible scheduling.
+- `"local"`: explicit date-time strings and boundary aliases are interpreted in the host local time zone. The constructor emits a `RuntimeWarning` because local civil times around daylight-saving/summer-time changes may be ambiguous or non-existent.
 
 ### `add_task(...)`
 
@@ -414,9 +420,11 @@ The same guarantee holds for `"next_minute"`, `"next_hour"`, and explicit wall-c
   - `"next_second"`
   - `"next_minute"`
   - `"next_hour"`
-- explicit local date-time string:
+- explicit date-time string, interpreted according to `Scheduler(time_scale=...)`:
   - `"YYYY-MM-DD HH:MM:SS"`
   - optional fractional seconds: `"YYYY-MM-DD HH:MM:SS.fffffffff"`
+  - default `time_scale="utc"` means the string is UTC
+  - `time_scale="local"` means the string is in the host local time zone and may be ambiguous around daylight-saving/summer-time transitions
 - numeric:
   - if value `< 1e12`: treated as epoch seconds (float/int)
   - otherwise: treated as epoch nanoseconds
@@ -501,6 +509,18 @@ cmake --build build --target run_regression_tests
 
 - call `add_task(...)` before `start_engine()`.
 
+## Time scale
+
+By default, `conductor` uses UTC for wall-clock scheduling. This applies to explicit string start values such as `"2026-07-11 12:00:00"` and to boundary aliases such as `"next_minute"` and `"next_hour"`. Numeric epoch timestamps are absolute epoch values and are not affected by `time_scale`.
+
+Use local civil time only when the schedule must follow the host machine's configured local time zone:
+
+```python
+s = conductor.Scheduler(time_scale="local")
+```
+
+This mode emits a `RuntimeWarning`. Around daylight-saving/summer-time changes, some local wall-clock times can occur twice or not exist at all, so UTC is safer for automated and reproducible scheduling.
+
 ## Notes and limitations
 
 - Timer scheduling is centralized in one internal `io_context(1)` thread.
@@ -510,7 +530,7 @@ cmake --build build --target run_regression_tests
 - `overlap` can queue multiple simultaneous invocations of the same task.
 - `skip` trades completeness for schedule regularity when a task cannot keep up with its period.
 - The built-in `"default"` pool has one worker to preserve conservative default behavior.
-- Absolute wall-clock parsing uses local time conversion.
+- Absolute wall-clock string parsing uses UTC by default; local conversion is available with `Scheduler(time_scale="local")` and emits a daylight-saving/summer-time warning.
 
 ## License
 

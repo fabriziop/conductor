@@ -44,7 +44,7 @@ using steady_clock_t = std::chrono::steady_clock;
 class Scheduler {
 public:
     explicit Scheduler(std::uint64_t default_pool_workers = 1)
-                : io_(1) {
+        : io_(1) {
         if (default_pool_workers == 0) {
             throw std::runtime_error("default_pool_workers must be >= 1");
         }
@@ -542,6 +542,30 @@ private:
         return std::chrono::system_clock::time_point(hrs);
     }
 
+    static std::int64_t days_from_civil(int y, unsigned m, unsigned d) {
+        y -= m <= 2;
+        const int era = (y >= 0 ? y : y - 399) / 400;
+        const unsigned yoe = static_cast<unsigned>(y - era * 400);
+        const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+        const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        return static_cast<std::int64_t>(era) * 146097 + static_cast<std::int64_t>(doe) - 719468;
+    }
+
+    static std::chrono::system_clock::time_point utc_time_point_from_tm(
+        const std::tm& tm
+    ) {
+        const auto days = days_from_civil(
+            tm.tm_year + 1900,
+            static_cast<unsigned>(tm.tm_mon + 1),
+            static_cast<unsigned>(tm.tm_mday)
+        );
+        auto seconds = std::chrono::seconds(days * 86400)
+                     + std::chrono::hours(tm.tm_hour)
+                     + std::chrono::minutes(tm.tm_min)
+                     + std::chrono::seconds(tm.tm_sec);
+        return std::chrono::system_clock::time_point(seconds);
+    }
+
     static std::chrono::system_clock::time_point parse_explicit_wallclock(
         const std::string& raw
     ) {
@@ -561,14 +585,8 @@ private:
         tm.tm_hour = std::stoi(m[4].str());
         tm.tm_min  = std::stoi(m[5].str());
         tm.tm_sec  = std::stoi(m[6].str());
-        tm.tm_isdst = -1;
 
-        std::time_t tt = std::mktime(&tm);
-        if (tt == static_cast<std::time_t>(-1)) {
-            throw std::runtime_error("failed to convert explicit local time: " + raw);
-        }
-
-        auto tp = std::chrono::system_clock::from_time_t(tt);
+        auto tp = utc_time_point_from_tm(tm);
 
         if (m[7].matched) {
             std::string frac = m[7].str();
@@ -578,6 +596,19 @@ private:
         }
 
         return tp;
+    }
+
+    static std::chrono::system_clock::time_point floor_to_utc_unit(
+        std::chrono::system_clock::time_point tp,
+        const char* unit
+    ) {
+        if (std::string(unit) == "second") {
+            return floor_to_second(tp);
+        }
+        if (std::string(unit) == "minute") {
+            return floor_to_minute(tp);
+        }
+        return floor_to_hour(tp);
     }
 
     static steady_clock_t::time_point resolve_start_deadline(
@@ -596,11 +627,11 @@ private:
             if (s == "asap" || s == "now") {
                 system_tp = now;
             } else if (s == "next_second") {
-                system_tp = floor_to_second(now) + std::chrono::seconds(1);
+                system_tp = floor_to_utc_unit(now, "second") + std::chrono::seconds(1);
             } else if (s == "next_minute") {
-                system_tp = floor_to_minute(now) + std::chrono::minutes(1);
+                system_tp = floor_to_utc_unit(now, "minute") + std::chrono::minutes(1);
             } else if (s == "next_hour") {
-                system_tp = floor_to_hour(now) + std::chrono::hours(1);
+                system_tp = floor_to_utc_unit(now, "hour") + std::chrono::hours(1);
             } else {
                 system_tp = parse_explicit_wallclock(raw);
             }
@@ -1016,6 +1047,7 @@ private:
             });
         });
     }
+
 
     mutable std::mutex mutex_;
     std::vector<std::shared_ptr<Job>> jobs_;

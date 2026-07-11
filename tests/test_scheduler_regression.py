@@ -207,6 +207,25 @@ class SchedulerRegressionTests(unittest.TestCase):
         self.assertFalse(jobs[task_id]["suspended"])
         self.assertEqual(jobs[task_id]["resume_after_slots"], 0)
 
+    def test_scheduler_rejects_time_scale_keyword(self):
+        with self.assertRaises(TypeError):
+            conductor.Scheduler(time_scale="local")
+
+    def test_explicit_utc_start_string_runs(self):
+        scheduler = conductor.Scheduler()
+        runs = []
+        start_epoch = time.time() + 0.05
+        utc_tm = time.gmtime(start_epoch)
+        frac_ns = int((start_epoch - int(start_epoch)) * 1_000_000_000)
+        start = time.strftime("%Y-%m-%d %H:%M:%S", utc_tm) + f".{frac_ns:09d}"
+
+        scheduler.add_task(lambda: runs.append(time.time()), period_us=10_000, start=start, count=1)
+        scheduler.start_engine()
+        wait_until_done(scheduler)
+
+        self.assertEqual(len(runs), 1)
+        self.assertGreaterEqual(runs[0], start_epoch - 0.05)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -48,10 +48,11 @@ Typical flow:
 ## Features
 
 - Schedule by period in microseconds (`period_us`)
+- Schedule time scale UTC
 - Start at:
   - immediate (`"asap"`, `"now"`)
   - aligned boundaries (`"next_second"`, `"next_minute"`, `"next_hour"`)
-  - explicit local wall clock (`"YYYY-MM-DD HH:MM:SS[.frac]"`)
+  - explicit wall clock (`"YYYY-MM-DD HH:MM:SS[.frac]"`) interpreted as UTC
   - numeric epoch timestamps
 - Optional start offset in microseconds (`offset_us`)
 - Optional finite run count (`count`) or run forever
@@ -193,6 +194,8 @@ s = conductor.Scheduler(default_pool_workers=1)
 
 `default_pool_workers` configures how many worker threads are created for the built-in
 `"default"` pool at runtime. It must be `>= 1`.
+
+String wall-clock start values and boundary aliases are always interpreted on the UTC time scale. Local-time scheduling is intentionally not supported, avoiding ambiguous or non-existent local civil times around daylight-saving/summer-time changes.
 
 ### `add_task(...)`
 
@@ -414,7 +417,7 @@ The same guarantee holds for `"next_minute"`, `"next_hour"`, and explicit wall-c
   - `"next_second"`
   - `"next_minute"`
   - `"next_hour"`
-- explicit local date-time string:
+- explicit UTC date-time string:
   - `"YYYY-MM-DD HH:MM:SS"`
   - optional fractional seconds: `"YYYY-MM-DD HH:MM:SS.fffffffff"`
 - numeric:
@@ -501,6 +504,12 @@ cmake --build build --target run_regression_tests
 
 - call `add_task(...)` before `start_engine()`.
 
+## Time scale
+
+`conductor` uses UTC only for wall-clock scheduling. This applies to explicit string start values such as `"2026-07-11 12:00:00"` and to boundary aliases such as `"next_minute"` and `"next_hour"`. Numeric epoch timestamps are absolute epoch values and are therefore also independent of the host local time zone.
+
+Local civil-time scheduling is intentionally not supported, because local times around daylight-saving/summer-time changes can be ambiguous or non-existent. Convert local times to UTC before passing them to `conductor`.
+
 ## Notes and limitations
 
 - Timer scheduling is centralized in one internal `io_context(1)` thread.
@@ -510,7 +519,7 @@ cmake --build build --target run_regression_tests
 - `overlap` can queue multiple simultaneous invocations of the same task.
 - `skip` trades completeness for schedule regularity when a task cannot keep up with its period.
 - The built-in `"default"` pool has one worker to preserve conservative default behavior.
-- Absolute wall-clock parsing uses local time conversion.
+- Absolute wall-clock string parsing uses UTC only; convert local civil times to UTC before scheduling.
 
 ## License
 
